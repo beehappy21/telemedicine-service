@@ -2,17 +2,26 @@ import express from 'express';
 import request from 'supertest';
 import { createTeleApi } from '../api/teleApi';
 import { SessionService } from '../services/sessionService';
+import { EmrClient } from '../services/emrClient';
+
+jest.mock('../services/createEncounterAfterCall');
+import { createEncounterAfterCall } from '../services/createEncounterAfterCall';
+const mockCreateEncounterAfterCall = createEncounterAfterCall as jest.Mock;
 
 const mockService = {
   createSession: jest.fn(),
   getJoinToken: jest.fn(),
   updateStatus: jest.fn(),
   linkEncounter: jest.fn(),
+  getSession: jest.fn(),
+  listSessions: jest.fn(),
 } as unknown as SessionService;
+
+const mockEmrClient = {} as unknown as EmrClient;
 
 const app = express();
 app.use(express.json());
-app.use('/api', createTeleApi(mockService));
+app.use('/api', createTeleApi(mockService, mockEmrClient));
 
 const baseSession = {
   id: 'sess-1',
@@ -22,6 +31,9 @@ const baseSession = {
   emr_encounter_id: null,
   session_number: null,
   scheduled_start_at: null,
+  chief_complaint: null,
+  started_at: null,
+  ended_at: null,
   provider_room_name: 'room-abc',
   provider_meeting_url: 'https://test.daily.co/room-abc',
   status: 'scheduled',
@@ -177,6 +189,97 @@ describe('PATCH /api/sessions/:id/status', () => {
     const res = await request(app)
       .patch('/api/sessions/bad-id/status')
       .send({ status: 'completed' });
+    expect(res.status).toBe(404);
+  });
+
+  it('200 — status=completed triggers createEncounterAfterCall (fire-and-forget)', async () => {
+    const completedSession = { ...baseSession, status: 'completed', emr_encounter_id: null };
+    (mockService.updateStatus as jest.Mock).mockResolvedValueOnce(completedSession);
+    mockCreateEncounterAfterCall.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .patch('/api/sessions/sess-1/status')
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(200);
+    expect(mockCreateEncounterAfterCall).toHaveBeenCalledWith(
+      completedSession,
+      mockEmrClient,
+      mockService
+    );
+  });
+
+  it('200 — skips encounter creation when emr_encounter_id already set', async () => {
+    const alreadyLinked = { ...baseSession, status: 'completed', emr_encounter_id: 'enc-existing' };
+    (mockService.updateStatus as jest.Mock).mockResolvedValueOnce(alreadyLinked);
+
+    const res = await request(app)
+      .patch('/api/sessions/sess-1/status')
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(200);
+    expect(mockCreateEncounterAfterCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/sessions', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('200 — returns paginated list', async () => {
+    (mockService.listSessions as jest.Mock).mockResolvedValueOnce({
+      sessions: [baseSession],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const res = await request(app).get('/api/sessions');
+    expect(res.status).toBe(200);
+    expect(res.body.sessions).toHaveLength(1);
+    expect(res.body.total).toBe(1);
+  });
+
+  it('200 — passes emrClinicId, status, date to service', async () => {
+    (mockService.listSessions as jest.Mock).mockResolvedValueOnce({
+      sessions: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
+
+    await request(app).get('/api/sessions?emrClinicId=clinic-1&status=scheduled&date=2026-01-15');
+
+    expect(mockService.listSessions).toHaveBeenCalledWith(
+      expect.objectContaining({ emrClinicId: 'clinic-1', status: 'scheduled', date: '2026-01-15' })
+    );
+  });
+
+  it('500 — propagates service errors', async () => {
+    (mockService.listSessions as jest.Mock).mockRejectedValueOnce(new Error('DB error'));
+
+    const res = await request(app).get('/api/sessions');
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('GET /api/sessions/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('200 — returns session detail', async () => {
+    (mockService.getSession as jest.Mock).mockResolvedValueOnce(baseSession);
+
+    const res = await request(app).get('/api/sessions/sess-1');
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('sess-1');
+    expect(res.body.emr_encounter_id).toBeNull();
+  });
+
+  it('404 — session not found', async () => {
+    (mockService.getSession as jest.Mock).mockRejectedValueOnce(
+      new Error('Session not found: bad-id')
+    );
+
+    const res = await request(app).get('/api/sessions/bad-id');
     expect(res.status).toBe(404);
   });
 });

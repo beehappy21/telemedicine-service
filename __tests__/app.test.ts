@@ -1,16 +1,20 @@
 import request from 'supertest';
 import { createApp } from '../app';
 import { SessionService } from '../services/sessionService';
+import { EmrClient } from '../services/emrClient';
 
 const mockService = {
   createSession: jest.fn(),
   getJoinToken: jest.fn(),
   updateStatus: jest.fn(),
   linkEncounter: jest.fn(),
+  getSession: jest.fn(),
+  listSessions: jest.fn(),
 } as unknown as SessionService;
 
+const mockEmrClient = {} as unknown as EmrClient;
 const appConfig = { serviceToken: 'svc-token', emrApiToken: 'emr-token' };
-const app = createApp(mockService, appConfig);
+const app = createApp(mockService, appConfig, mockEmrClient);
 
 describe('GET /health', () => {
   it('returns { status: ok, service: telemedicine } without auth', async () => {

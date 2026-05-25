@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { SessionService, SessionStatus } from '../services/sessionService';
+import { SessionService, SessionStatus, ListSessionsInput } from '../services/sessionService';
+import { EmrClient } from '../services/emrClient';
+import { createEncounterAfterCall } from '../services/createEncounterAfterCall';
 import { clinicRateLimiter } from '../middleware/rateLimit';
 
 const VALID_STATUSES: SessionStatus[] = [
@@ -20,10 +22,69 @@ function isFuture(isoString: string): boolean {
   return new Date(isoString) > new Date();
 }
 
-export function createTeleApi(sessionService: SessionService): Router {
+export function createTeleApi(sessionService: SessionService, emrClient: EmrClient): Router {
   const router = Router();
   const sessionCreateLimiter = clinicRateLimiter();
 
+  // GET /sessions — list with optional filters + pagination
+  router.get('/sessions', async (req: Request, res: Response) => {
+    const { emrClinicId, status, date, page, limit } = req.query as Record<string, string | undefined>;
+
+    const input: ListSessionsInput = {
+      emrClinicId,
+      status: status as SessionStatus | undefined,
+      date,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+
+    try {
+      const result = await sessionService.listSessions(input);
+      res.json(result);
+    } catch {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /sessions/:id/join — must be defined before /sessions/:id
+  router.get('/sessions/:id/join', async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const userId = req.query['userId'] as string | undefined;
+
+    if (!userId) {
+      res.status(400).json({ error: 'Missing required query parameter: userId' });
+      return;
+    }
+
+    try {
+      const result = await sessionService.getJoinToken(id, userId);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('not found')) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /sessions/:id — detail
+  router.get('/sessions/:id', async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    try {
+      const session = await sessionService.getSession(id);
+      res.json(session);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('not found')) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /sessions
   router.post('/sessions', sessionCreateLimiter, async (req: Request, res: Response) => {
     const {
       emr_clinic_id,
@@ -31,6 +92,7 @@ export function createTeleApi(sessionService: SessionService): Router {
       emr_practitioner_id,
       session_number,
       scheduled_start_at,
+      chief_complaint,
     } = req.body as Record<string, string | undefined>;
 
     if (!emr_clinic_id || !emr_patient_id || !emr_practitioner_id) {
@@ -56,6 +118,7 @@ export function createTeleApi(sessionService: SessionService): Router {
         emr_practitioner_id,
         session_number,
         scheduled_start_at,
+        chief_complaint,
       });
       res.status(201).json(session);
     } catch (err) {
@@ -67,27 +130,7 @@ export function createTeleApi(sessionService: SessionService): Router {
     }
   });
 
-  router.get('/sessions/:id/join', async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const userId = req.query['userId'] as string | undefined;
-
-    if (!userId) {
-      res.status(400).json({ error: 'Missing required query parameter: userId' });
-      return;
-    }
-
-    try {
-      const result = await sessionService.getJoinToken(id, userId);
-      res.json(result);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('not found')) {
-        res.status(404).json({ error: err.message });
-        return;
-      }
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
+  // PATCH /sessions/:id/status — auto-creates encounter when completed
   router.patch('/sessions/:id/status', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { status } = req.body as { status?: string };
@@ -100,6 +143,11 @@ export function createTeleApi(sessionService: SessionService): Router {
     try {
       const session = await sessionService.updateStatus(id, status as SessionStatus);
       res.json(session);
+
+      // Fire-and-forget: create EMR encounter after call completes
+      if (status === 'completed' && !session.emr_encounter_id) {
+        void createEncounterAfterCall(session, emrClient, sessionService);
+      }
     } catch (err) {
       if (err instanceof Error && err.message.includes('not found')) {
         res.status(404).json({ error: err.message });
@@ -109,6 +157,7 @@ export function createTeleApi(sessionService: SessionService): Router {
     }
   });
 
+  // PATCH /sessions/:id/encounter
   router.patch('/sessions/:id/encounter', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { emr_encounter_id } = req.body as { emr_encounter_id?: string };

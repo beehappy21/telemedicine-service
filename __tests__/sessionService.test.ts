@@ -19,6 +19,9 @@ const baseSession = {
   emr_encounter_id: null,
   session_number: null,
   scheduled_start_at: null,
+  chief_complaint: null,
+  started_at: null,
+  ended_at: null,
   provider_room_name: 'room-abc',
   provider_meeting_url: 'https://test.daily.co/room-abc',
   status: 'scheduled' as const,
@@ -113,6 +116,27 @@ describe('SessionService', () => {
     });
   });
 
+  describe('updateStatus timing fields', () => {
+    it('sets started_at when transitioning to in_progress', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ ...baseSession, status: 'in_progress', started_at: new Date() }] });
+
+      await service.updateStatus('sess-1', 'in_progress');
+
+      const sql = mockQuery.mock.calls[0][0] as string;
+      expect(sql).toContain('started_at');
+      expect(sql).toContain('COALESCE');
+    });
+
+    it('sets ended_at when transitioning to completed', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ ...baseSession, status: 'completed', ended_at: new Date() }] });
+
+      await service.updateStatus('sess-1', 'completed');
+
+      const sql = mockQuery.mock.calls[0][0] as string;
+      expect(sql).toContain('ended_at');
+    });
+  });
+
   describe('linkEncounter', () => {
     it('links encounter ID to session', async () => {
       const updated = { ...baseSession, emr_encounter_id: 'enc-1' };
@@ -129,6 +153,98 @@ describe('SessionService', () => {
       await expect(service.linkEncounter('bad-id', 'enc-1')).rejects.toThrow(
         'Session not found: bad-id'
       );
+    });
+  });
+
+  describe('getSession', () => {
+    it('returns session by id', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [baseSession] });
+
+      const session = await service.getSession('sess-1');
+      expect(session).toEqual(baseSession);
+    });
+
+    it('throws when session not found', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      await expect(service.getSession('bad-id')).rejects.toThrow('Session not found: bad-id');
+    });
+  });
+
+  describe('listSessions', () => {
+    it('returns all sessions with defaults when no filters given', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '5' }] })
+        .mockResolvedValueOnce({ rows: [baseSession] });
+
+      const result = await service.listSessions({});
+
+      expect(result.total).toBe(5);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.sessions).toHaveLength(1);
+    });
+
+    it('applies emrClinicId filter', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '2' }] })
+        .mockResolvedValueOnce({ rows: [baseSession] });
+
+      await service.listSessions({ emrClinicId: 'clinic-1' });
+
+      const countSql = mockQuery.mock.calls[0][0] as string;
+      const countParams = mockQuery.mock.calls[0][1] as unknown[];
+      expect(countSql).toContain('emr_clinic_id');
+      expect(countParams).toContain('clinic-1');
+    });
+
+    it('applies status filter', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+        .mockResolvedValueOnce({ rows: [baseSession] });
+
+      await service.listSessions({ status: 'scheduled' });
+
+      const countSql = mockQuery.mock.calls[0][0] as string;
+      const countParams = mockQuery.mock.calls[0][1] as unknown[];
+      expect(countSql).toContain('status');
+      expect(countParams).toContain('scheduled');
+    });
+
+    it('applies date filter', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '3' }] })
+        .mockResolvedValueOnce({ rows: [baseSession] });
+
+      await service.listSessions({ date: '2026-01-15' });
+
+      const countSql = mockQuery.mock.calls[0][0] as string;
+      const countParams = mockQuery.mock.calls[0][1] as unknown[];
+      expect(countSql).toContain('DATE');
+      expect(countParams).toContain('2026-01-15');
+    });
+
+    it('passes correct limit and offset for page 3', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '50' }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const result = await service.listSessions({ page: 3, limit: 10 });
+
+      expect(result.page).toBe(3);
+      expect(result.limit).toBe(10);
+      const dataParams = mockQuery.mock.calls[1][1] as unknown[];
+      expect(dataParams).toContain(10);  // limit
+      expect(dataParams).toContain(20);  // offset = (3-1)*10
+    });
+
+    it('caps limit at 100', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ count: '200' }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const result = await service.listSessions({ limit: 999 });
+      expect(result.limit).toBe(100);
     });
   });
 });

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { SessionService } from './services/sessionService';
+import { EmrClient } from './services/emrClient';
 import { createTeleApi } from './api/teleApi';
 import { createAuthMiddleware } from './middleware/auth';
 import { ipRateLimiter } from './middleware/rateLimit';
@@ -9,7 +10,11 @@ export interface AppConfig {
   emrApiToken: string;
 }
 
-export function createApp(sessionService: SessionService, appConfig: AppConfig) {
+export function createApp(
+  sessionService: SessionService,
+  appConfig: AppConfig,
+  emrClient: EmrClient
+) {
   const app = express();
   app.use(express.json());
 
@@ -21,7 +26,7 @@ export function createApp(sessionService: SessionService, appConfig: AppConfig) 
   // All /api routes: global IP rate limit then auth
   app.use('/api', ipRateLimiter());
   app.use('/api', createAuthMiddleware({ serviceToken: appConfig.serviceToken, emrApiToken: appConfig.emrApiToken }));
-  app.use('/api', createTeleApi(sessionService));
+  app.use('/api', createTeleApi(sessionService, emrClient));
 
   return app;
 }
