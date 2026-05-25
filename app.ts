@@ -57,13 +57,28 @@ export function createApp(
     }
   });
 
-  // Frontend pages — public, no auth
+  // Frontend pages
   const frontendDir = path.join(process.cwd(), 'frontend');
+
+  // Public pages — no auth
   app.get('/app/patient', (_req: Request, res: Response) => {
     res.sendFile(path.join(frontendDir, 'patient.html'));
   });
   app.get('/app/doctor', (_req: Request, res: Response) => {
     res.sendFile(path.join(frontendDir, 'doctor.html'));
+  });
+  app.get('/app/summary', (_req: Request, res: Response) => {
+    res.sendFile(path.join(frontendDir, 'summary.html'));
+  });
+
+  // Admin page — requires valid token as query param
+  app.get('/app/admin', (req: Request, res: Response) => {
+    const token = req.query['token'] as string | undefined;
+    if (!token || (token !== appConfig.serviceToken && token !== appConfig.emrApiToken)) {
+      res.status(401).send('<h1>Unauthorized</h1><p>กรุณาเข้าถึงผ่านลิ้งค์ที่ถูกต้อง</p>');
+      return;
+    }
+    res.sendFile(path.join(frontendDir, 'admin.html'));
   });
 
   // All /api routes: global IP rate limit then auth

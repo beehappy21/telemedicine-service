@@ -6,7 +6,7 @@
   <title>ห้องตรวจทางออนไลน์</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body { font-family: 'Segoe UI', sans-serif; font-size: 16px; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 32px; width: 100%; max-width: 520px; }
     h1 { font-size: 1.4rem; color: #1e293b; margin-bottom: 20px; }
     .section-title { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin: 16px 0 8px; }
@@ -15,15 +15,21 @@
     .label { color: #64748b; }
     .value { font-weight: 600; color: #1e293b; max-width: 60%; text-align: right; }
     .complaint { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; border-radius: 4px; font-size: .9rem; color: #334155; margin: 8px 0 16px; }
-    .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 10px; transition: opacity .15s; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 10px; min-height: 48px; transition: opacity .15s; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn-start { background: #16a34a; color: #fff; }
     .btn-start:hover:not(:disabled) { background: #15803d; }
     .btn-end { background: #dc2626; color: #fff; display: none; }
     .btn-end:hover:not(:disabled) { background: #b91c1c; }
+    .waiting-badge { display: none; background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 10px 16px; margin-top: 12px; font-size: .9rem; color: #854d0e; font-weight: 600; text-align: center; }
     .call-frame { display: none; width: 100%; height: 520px; border: none; border-radius: 10px; margin-top: 20px; }
     .error { background: #fee2e2; color: #b91c1c; padding: 12px 16px; border-radius: 8px; font-size: .9rem; margin-top: 16px; }
     #loading { text-align: center; color: #64748b; padding: 40px; }
+    @media (max-width: 640px) {
+      body { align-items: flex-start; }
+      .card { border-radius: 0; box-shadow: none; min-height: 100vh; padding: 24px 20px; }
+      .call-frame { height: 100dvh; border-radius: 0; margin-top: 0; }
+    }
   </style>
 </head>
 <body>
@@ -45,6 +51,8 @@
 
       <div class="section-title">อาการสำคัญ</div>
       <div class="complaint" id="chief-complaint">—</div>
+
+      <div id="waiting-badge" class="waiting-badge">👤 ผู้ป่วยรออยู่</div>
 
       <button id="btn-start" class="btn btn-start">เริ่มการพบแพทย์</button>
       <button id="btn-end"   class="btn btn-end">จบการพบแพทย์</button>
@@ -68,10 +76,11 @@
     };
 
     let currentSession = null;
+    let pollTimer      = null;
 
     async function init() {
       if (!sessionId || !bearerToken) {
-        showError('ลิงก์ไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ');
+        showError('ลิ้งค์ไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ');
         return;
       }
       try {
@@ -79,6 +88,7 @@
         renderSession(currentSession);
         document.getElementById('btn-start').onclick = startCall;
         document.getElementById('btn-end').onclick   = endCall;
+        startPolling();
       } catch (e) {
         showError('ไม่สามารถโหลดข้อมูลผู้ป่วยได้: ' + e.message);
       }
@@ -94,12 +104,37 @@
 
       document.getElementById('loading').style.display = 'none';
       document.getElementById('session-info').style.display = 'block';
+      updateWaitingBadge(session.status);
+    }
+
+    function updateWaitingBadge(status) {
+      document.getElementById('waiting-badge').style.display =
+        status === 'waiting' ? 'block' : 'none';
+    }
+
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(async () => {
+        try {
+          const latest = await apiFetch(`/api/sessions/${sessionId}`);
+          updateWaitingBadge(latest.status);
+          if (['completed', 'cancelled', 'no_show'].includes(latest.status)) {
+            stopPolling();
+          }
+        } catch (e) { /* continue despite transient errors */ }
+      }, 5000);
+    }
+
+    function stopPolling() {
+      clearInterval(pollTimer);
+      pollTimer = null;
     }
 
     async function startCall() {
       const btn = document.getElementById('btn-start');
       btn.disabled    = true;
       btn.textContent = 'กำลังเชื่อมต่อ...';
+      stopPolling();
       try {
         await apiFetch(`/api/sessions/${sessionId}/status`, {
           method: 'PATCH',
@@ -109,14 +144,16 @@
           `/api/sessions/${sessionId}/join?userId=${currentSession.emr_practitioner_id}&role=doctor`
         );
         const frame = document.getElementById('call-frame');
-        frame.src          = `${currentSession.provider_meeting_url}?t=${token}`;
+        frame.src           = `${currentSession.provider_meeting_url}?t=${token}`;
         frame.style.display = 'block';
         btn.style.display   = 'none';
         document.getElementById('btn-end').style.display = 'block';
+        document.getElementById('waiting-badge').style.display = 'none';
       } catch (e) {
         showError('ไม่สามารถเริ่มการพบแพทย์ได้: ' + e.message);
         btn.disabled    = false;
         btn.textContent = 'เริ่มการพบแพทย์';
+        startPolling();
       }
     }
 
@@ -125,23 +162,14 @@
       btn.disabled    = true;
       btn.textContent = 'กำลังบันทึก...';
       try {
-        const updated = await apiFetch(`/api/sessions/${sessionId}/status`, {
+        await apiFetch(`/api/sessions/${sessionId}/status`, {
           method: 'PATCH',
           body:   JSON.stringify({ status: 'completed' }),
         });
-        // Redirect to SOAP note in emr-core (use encounter id if already linked)
-        const encounterId = updated.emr_encounter_id;
-        if (emrCoreBaseUrl && encounterId) {
-          location.href = `${emrCoreBaseUrl}/encounters/${encounterId}/soap`;
-        } else if (emrCoreBaseUrl) {
-          location.href = `${emrCoreBaseUrl}/patients/${updated.emr_patient_id}`;
-        }
-        // If no emrCoreBaseUrl, just show completed state
-        document.getElementById('call-frame').style.display = 'none';
-        btn.style.display = 'none';
-        showError('การพบแพทย์เสร็จสิ้น');
-        document.getElementById('error-box').style.background = '#dcfce7';
-        document.getElementById('error-box').style.color      = '#15803d';
+        // Redirect to summary page
+        const summaryParams = new URLSearchParams({ sessionId, token: bearerToken });
+        if (emrCoreBaseUrl) summaryParams.set('emrCoreBaseUrl', emrCoreBaseUrl);
+        location.href = `/app/summary?${summaryParams}`;
       } catch (e) {
         showError('ไม่สามารถบันทึกการสิ้นสุดการพบแพทย์ได้: ' + e.message);
         btn.disabled    = false;

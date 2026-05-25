@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>สรุปการพบแพทย์</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; font-size: 16px; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 32px; width: 100%; max-width: 520px; }
+    .complete-banner { background: #dcfce7; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 24px; }
+    .complete-banner .icon { font-size: 2.5rem; }
+    .complete-banner h1 { font-size: 1.3rem; color: #15803d; margin-top: 8px; }
+    .section-title { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin: 20px 0 8px; }
+    .info-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: .95rem; }
+    .info-row:last-of-type { border-bottom: none; }
+    .label { color: #64748b; flex-shrink: 0; }
+    .value { font-weight: 600; color: #1e293b; text-align: right; max-width: 60%; }
+    .complaint-box { background: #f8fafc; border-left: 3px solid #2563eb; padding: 12px 14px; border-radius: 4px; font-size: .9rem; color: #334155; margin: 8px 0 4px; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 12px; min-height: 48px; transition: opacity .15s; text-decoration: none; display: block; text-align: center; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #e2e8f0; color: #1e293b; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .error { background: #fee2e2; color: #b91c1c; padding: 12px 16px; border-radius: 8px; font-size: .9rem; }
+    #loading { text-align: center; color: #64748b; padding: 40px; }
+    @media (max-width: 640px) {
+      body { align-items: flex-start; }
+      .card { border-radius: 0; box-shadow: none; min-height: 100vh; padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="summary-content" style="display:none">
+      <div class="complete-banner">
+        <div class="icon">✅</div>
+        <h1>การพบแพทย์เสร็จสิ้น</h1>
+      </div>
+
+      <div class="section-title">ข้อมูลผู้ป่วย</div>
+      <div class="info-row">
+        <span class="label">รหัสผู้ป่วย (HN)</span>
+        <span class="value" id="patient-id">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">รหัสแพทย์</span>
+        <span class="value" id="practitioner-id">—</span>
+      </div>
+
+      <div class="section-title">อาการสำคัญ</div>
+      <div class="complaint-box" id="chief-complaint">—</div>
+
+      <div class="section-title">สรุปการพบแพทย์</div>
+      <div class="info-row">
+        <span class="label">เวลาเริ่มต้น</span>
+        <span class="value" id="started-at">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">เวลาสิ้นสุด</span>
+        <span class="value" id="ended-at">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">ระยะเวลา</span>
+        <span class="value" id="duration">—</span>
+      </div>
+
+      <div id="soap-btn-wrapper" style="display:none">
+        <a id="btn-soap" href="#" class="btn btn-primary" style="margin-top: 24px;">บันทึก SOAP Note</a>
+      </div>
+      <a id="btn-close" href="javascript:history.back()" class="btn btn-secondary">กลับ</a>
+    </div>
+
+    <div id="error-box" style="display:none" class="error"></div>
+  </div>
+
+  <script>
+    const params         = new URLSearchParams(location.search);
+    const sessionId      = params.get('sessionId');
+    const bearerToken    = params.get('token');
+    const emrCoreBaseUrl = params.get('emrCoreBaseUrl') ?? '';
+
+    const headers = {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+
+    async function init() {
+      if (!sessionId || !bearerToken) {
+        showError('ลิ้งค์ไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ');
+        return;
+      }
+      try {
+        const session = await apiFetch(`/api/sessions/${sessionId}`);
+        renderSummary(session);
+      } catch (e) {
+        showError('ไม่สามารถโหลดข้อมูลได้: ' + e.message);
+      }
+    }
+
+    function renderSummary(session) {
+      document.getElementById('patient-id').textContent      = session.emr_patient_id;
+      document.getElementById('practitioner-id').textContent = session.emr_practitioner_id;
+      document.getElementById('chief-complaint').textContent = session.chief_complaint ?? 'ไม่ระบุอาการ';
+
+      document.getElementById('started-at').textContent = session.started_at
+        ? new Date(session.started_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+        : '—';
+      document.getElementById('ended-at').textContent = session.ended_at
+        ? new Date(session.ended_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+        : '—';
+
+      const mins = session.duration_minutes;
+      document.getElementById('duration').textContent =
+        mins != null ? `${mins} นาที` : '—';
+
+      // SOAP link
+      if (emrCoreBaseUrl) {
+        const encounterId = session.emr_encounter_id;
+        const soapHref = encounterId
+          ? `${emrCoreBaseUrl}/encounters/${encounterId}/soap`
+          : `${emrCoreBaseUrl}/patients/${session.emr_patient_id}`;
+        document.getElementById('btn-soap').href = soapHref;
+        document.getElementById('soap-btn-wrapper').style.display = 'block';
+      }
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('summary-content').style.display = 'block';
+    }
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...headers, ...(options.headers ?? {}) } });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? res.statusText);
+      }
+      return res.json();
+    }
+
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      const box = document.getElementById('error-box');
+      box.textContent   = msg;
+      box.style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -87,7 +87,7 @@ describe('/api auth guard (via app)', () => {
   });
 });
 
-describe('Frontend pages', () => {
+describe('Frontend pages (public)', () => {
   it('GET /app/patient — serves patient.html without auth', async () => {
     const res = await request(app).get('/app/patient');
     expect(res.status).toBe(200);
@@ -96,6 +96,36 @@ describe('Frontend pages', () => {
 
   it('GET /app/doctor — serves doctor.html without auth', async () => {
     const res = await request(app).get('/app/doctor');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+
+  it('GET /app/summary — serves summary.html without auth', async () => {
+    const res = await request(app).get('/app/summary');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+});
+
+describe('GET /app/admin (requires auth)', () => {
+  it('401 — no token', async () => {
+    const res = await request(app).get('/app/admin');
+    expect(res.status).toBe(401);
+  });
+
+  it('401 — wrong token', async () => {
+    const res = await request(app).get('/app/admin?token=wrong-token');
+    expect(res.status).toBe(401);
+  });
+
+  it('200 — valid service token serves admin.html', async () => {
+    const res = await request(app).get('/app/admin?token=svc-token');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+
+  it('200 — valid EMR API token also accepted', async () => {
+    const res = await request(app).get('/app/admin?token=emr-token');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/html/);
   });

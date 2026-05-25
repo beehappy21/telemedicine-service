@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>แผงควบคุม — เจ้าหน้าที่คลินิก</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; font-size: 16px; background: #f1f5f9; min-height: 100vh; }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    header h1 { font-size: 1.4rem; color: #1e293b; }
+    .clinic-tag { background: #dbeafe; color: #1d4ed8; font-size: .8rem; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); padding: 28px; margin-bottom: 24px; }
+    .card h2 { font-size: 1.1rem; color: #1e293b; margin-bottom: 20px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: .85rem; font-weight: 600; color: #475569; }
+    input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: .95rem; color: #1e293b; outline: none; }
+    input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer; min-height: 48px; transition: opacity .15s; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-danger { background: #dc2626; color: #fff; padding: 6px 14px; font-size: .85rem; min-height: 36px; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-copy { background: #e2e8f0; color: #334155; padding: 6px 14px; font-size: .85rem; min-height: 36px; }
+    .btn-copy:hover { background: #cbd5e1; }
+    .form-footer { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+    .form-error { color: #b91c1c; font-size: .875rem; }
+    .form-success { color: #15803d; font-size: .875rem; }
+    .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .refresh-btn { background: none; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 14px; font-size: .875rem; cursor: pointer; color: #475569; min-height: 36px; }
+    .refresh-btn:hover { background: #f8fafc; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; padding: 8px 12px; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: .9rem; color: #334155; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+    .status-scheduled  { background: #dbeafe; color: #1d4ed8; }
+    .status-waiting    { background: #fef9c3; color: #854d0e; }
+    .status-in_progress { background: #dcfce7; color: #15803d; }
+    .status-completed  { background: #f1f5f9; color: #475569; }
+    .status-cancelled  { background: #fee2e2; color: #b91c1c; }
+    .status-no_show    { background: #f1f5f9; color: #94a3b8; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .empty { text-align: center; color: #94a3b8; padding: 40px; }
+    #table-loading { text-align: center; color: #64748b; padding: 24px; }
+    .copied { color: #15803d !important; }
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: 1; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>แผงควบคุมห้องตรวจ</h1>
+      <span class="clinic-tag" id="clinic-tag">คลินิก: —</span>
+    </header>
+
+    <!-- Create Session Form -->
+    <div class="card">
+      <h2>สร้างนัดใหม่</h2>
+      <form id="create-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="f-hn">HN (รหัสผู้ป่วย) *</label>
+            <input id="f-hn" type="text" required placeholder="HN-0001">
+          </div>
+          <div class="field">
+            <label for="f-doctor">รหัสแพทย์ *</label>
+            <input id="f-doctor" type="text" required placeholder="DR-001">
+          </div>
+          <div class="field">
+            <label for="f-complaint">อาการสำคัญ</label>
+            <input id="f-complaint" type="text" placeholder="ปวดหัว, ไข้ ฯลฯ">
+          </div>
+          <div class="field">
+            <label for="f-sn">เลขที่นัด (ไม่บังคับ)</label>
+            <input id="f-sn" type="text" placeholder="SN-2026-001">
+          </div>
+          <div class="field full">
+            <label for="f-datetime">วันและเวลานัด</label>
+            <input id="f-datetime" type="datetime-local">
+          </div>
+        </div>
+        <div class="form-footer">
+          <button type="submit" class="btn btn-primary" id="btn-create">สร้างนัด</button>
+          <span id="form-msg"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Today's Schedule -->
+    <div class="card">
+      <div class="table-header">
+        <h2>ตารางนัดวันนี้</h2>
+        <button class="refresh-btn" id="btn-refresh">↻ รีเฟรช</button>
+      </div>
+      <div id="table-loading">กำลังโหลด...</div>
+      <div id="empty-msg" class="empty" style="display:none">ไม่มีนัดวันนี้</div>
+      <div id="table-wrapper" style="display:none">
+        <table>
+          <thead>
+            <tr>
+              <th>HN</th>
+              <th>อาการ</th>
+              <th>แพทย์</th>
+              <th>เวลานัด</th>
+              <th>สถานะ</th>
+              <th>การดำเนินการ</th>
+            </tr>
+          </thead>
+          <tbody id="sessions-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params      = new URLSearchParams(location.search);
+    const bearerToken = params.get('token') ?? '';
+    const clinicId    = params.get('clinicId') ?? '';
+
+    const headers = {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+
+    const STATUS_LABELS = {
+      scheduled:   'รอการนัด',
+      waiting:     'รอแพทย์',
+      in_progress: 'กำลังพบแพทย์',
+      completed:   'เสร็จสิ้น',
+      cancelled:   'ยกเลิก',
+      no_show:     'ไม่มาพบ',
+    };
+
+    document.getElementById('clinic-tag').textContent = `คลินิก: ${clinicId || '(ไม่ระบุ)'}`;
+
+    // --- Create form ---
+    document.getElementById('create-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-create');
+      const msg = document.getElementById('form-msg');
+      btn.disabled    = true;
+      btn.textContent = 'กำลังสร้าง...';
+      msg.textContent = '';
+      msg.className   = '';
+
+      const scheduledAt = document.getElementById('f-datetime').value;
+      const body = {
+        emr_clinic_id:       clinicId,
+        emr_patient_id:      document.getElementById('f-hn').value.trim(),
+        emr_practitioner_id: document.getElementById('f-doctor').value.trim(),
+        chief_complaint:     document.getElementById('f-complaint').value.trim() || undefined,
+        session_number:      document.getElementById('f-sn').value.trim() || undefined,
+        scheduled_start_at:  scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+      };
+
+      try {
+        await apiFetch('/api/sessions', { method: 'POST', body: JSON.stringify(body) });
+        msg.textContent = 'สร้างนัดสำเร็จ';
+        msg.className   = 'form-success';
+        document.getElementById('create-form').reset();
+        await loadSessions();
+      } catch (err) {
+        msg.textContent = `เกิดข้อผิดพลาด: ${err.message}`;
+        msg.className   = 'form-error';
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'สร้างนัด';
+      }
+    };
+
+    document.getElementById('btn-refresh').onclick = loadSessions;
+
+    // --- Load sessions ---
+    async function loadSessions() {
+      document.getElementById('table-loading').style.display = 'block';
+      document.getElementById('table-wrapper').style.display = 'none';
+      document.getElementById('empty-msg').style.display     = 'none';
+
+      const today = new Date().toISOString().split('T')[0];
+      const qs    = new URLSearchParams({ date: today });
+      if (clinicId) qs.set('emrClinicId', clinicId);
+
+      try {
+        const { sessions } = await apiFetch(`/api/sessions?${qs}&limit=100`);
+        renderTable(sessions);
+      } catch (err) {
+        document.getElementById('table-loading').textContent = `โหลดข้อมูลไม่สำเร็จ: ${err.message}`;
+      }
+    }
+
+    function renderTable(sessions) {
+      document.getElementById('table-loading').style.display = 'none';
+      if (!sessions.length) {
+        document.getElementById('empty-msg').style.display = 'block';
+        return;
+      }
+      document.getElementById('table-wrapper').style.display = 'block';
+      const tbody = document.getElementById('sessions-body');
+      tbody.innerHTML = '';
+      sessions.forEach(session => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${escHtml(session.emr_patient_id)}</strong></td>
+          <td>${escHtml(session.chief_complaint ?? '—')}</td>
+          <td>${escHtml(session.emr_practitioner_id)}</td>
+          <td>${session.scheduled_start_at
+            ? new Date(session.scheduled_start_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
+            : '—'}</td>
+          <td><span class="status-badge status-${session.status}">${STATUS_LABELS[session.status] ?? session.status}</span></td>
+          <td class="actions">
+            <button class="btn btn-copy" data-session-id="${session.id}" data-patient-id="${session.emr_patient_id}">คัดลอกลิ้งค์</button>
+            ${['scheduled', 'waiting'].includes(session.status)
+              ? `<button class="btn btn-danger" data-cancel="${session.id}">ยกเลิก</button>`
+              : ''}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      tbody.querySelectorAll('[data-session-id]').forEach(btn => {
+        btn.onclick = () => copyPatientLink(btn.dataset.sessionId);
+      });
+      tbody.querySelectorAll('[data-cancel]').forEach(btn => {
+        btn.onclick = () => cancelSession(btn.dataset.cancel, btn);
+      });
+    }
+
+    function copyPatientLink(sid) {
+      const url = `${location.origin}/app/patient?sessionId=${sid}&token=${encodeURIComponent(bearerToken)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector(`[data-session-id="${sid}"]`);
+        if (btn) {
+          const orig = btn.textContent;
+          btn.textContent = '✓ คัดลอกแล้ว';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+        }
+      }).catch(() => {
+        prompt('คัดลอก URL:', url);
+      });
+    }
+
+    async function cancelSession(sid, btn) {
+      if (!confirm('ยืนยันการยกเลิกนัด?')) return;
+      btn.disabled = true;
+      try {
+        await apiFetch(`/api/sessions/${sid}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'cancelled' }),
+        });
+        await loadSessions();
+      } catch (err) {
+        alert(`ยกเลิกไม่สำเร็จ: ${err.message}`);
+        btn.disabled = false;
+      }
+    }
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...headers, ...(options.headers ?? {}) } });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    loadSessions();
+  </script>
+</body>
+</html>

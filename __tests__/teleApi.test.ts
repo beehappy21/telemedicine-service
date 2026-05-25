@@ -334,6 +334,43 @@ describe('GET /api/sessions/:id', () => {
     expect(res.body.emr_encounter_id).toBeNull();
   });
 
+  it('200 — duration_minutes is null when session not yet started', async () => {
+    (mockService.getSession as jest.Mock).mockResolvedValueOnce({ ...baseSession, started_at: null });
+
+    const res = await request(app).get('/api/sessions/sess-1');
+    expect(res.status).toBe(200);
+    expect(res.body.duration_minutes).toBeNull();
+  });
+
+  it('200 — duration_minutes is computed when session is in progress', async () => {
+    const startedAt = new Date(Date.now() - 10 * 60 * 1000); // 10 min ago
+    (mockService.getSession as jest.Mock).mockResolvedValueOnce({
+      ...baseSession,
+      started_at: startedAt,
+      ended_at: null,
+      status: 'in_progress',
+    });
+
+    const res = await request(app).get('/api/sessions/sess-1');
+    expect(res.status).toBe(200);
+    expect(res.body.duration_minutes).toBeGreaterThanOrEqual(9);
+    expect(res.body.duration_minutes).toBeLessThanOrEqual(11);
+  });
+
+  it('200 — duration_minutes uses ended_at when session is completed', async () => {
+    const startedAt = new Date('2026-01-01T09:00:00Z');
+    const endedAt   = new Date('2026-01-01T09:30:00Z');
+    (mockService.getSession as jest.Mock).mockResolvedValueOnce({
+      ...baseSession,
+      started_at: startedAt,
+      ended_at:   endedAt,
+      status: 'completed',
+    });
+
+    const res = await request(app).get('/api/sessions/sess-1');
+    expect(res.body.duration_minutes).toBe(30);
+  });
+
   it('404 — session not found', async () => {
     (mockService.getSession as jest.Mock).mockRejectedValueOnce(
       new Error('Session not found: bad-id')

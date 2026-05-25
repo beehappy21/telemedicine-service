@@ -23,6 +23,13 @@ function isFuture(isoString: string): boolean {
   return new Date(isoString) > new Date();
 }
 
+function computeDurationMinutes(session: { started_at: Date | null; ended_at: Date | null }): number | null {
+  if (!session.started_at) return null;
+  const start = new Date(session.started_at).getTime();
+  const end   = session.ended_at ? new Date(session.ended_at).getTime() : Date.now();
+  return Math.max(0, Math.round((end - start) / 60_000));
+}
+
 export function createTeleApi(sessionService: SessionService, emrClient: EmrClient, webhookUrl?: string): Router {
   const router = Router();
   const sessionCreateLimiter = clinicRateLimiter();
@@ -85,13 +92,13 @@ export function createTeleApi(sessionService: SessionService, emrClient: EmrClie
     }
   });
 
-  // GET /sessions/:id — detail
+  // GET /sessions/:id — detail (includes computed duration_minutes)
   router.get('/sessions/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     try {
       const session = await sessionService.getSession(id);
-      res.json(session);
+      res.json({ ...session, duration_minutes: computeDurationMinutes(session) });
     } catch (err) {
       if (err instanceof Error && err.message.includes('not found')) {
         res.status(404).json({ error: err.message });
