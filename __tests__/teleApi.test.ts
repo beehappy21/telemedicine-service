@@ -20,6 +20,8 @@ const baseSession = {
   emr_patient_id: 'patient-1',
   emr_practitioner_id: 'dr-1',
   emr_encounter_id: null,
+  session_number: null,
+  scheduled_start_at: null,
   provider_room_name: 'room-abc',
   provider_meeting_url: 'https://test.daily.co/room-abc',
   status: 'scheduled',
@@ -58,6 +60,55 @@ describe('POST /api/sessions', () => {
     });
 
     expect(res.status).toBe(500);
+  });
+
+  it('400 — scheduled_start_at is not a valid ISO8601 string', async () => {
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-iso',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+      scheduled_start_at: 'not-a-date',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/ISO8601/i);
+  });
+
+  it('400 — scheduled_start_at is in the past', async () => {
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-past',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+      scheduled_start_at: '2020-01-01T00:00:00Z',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/future/i);
+  });
+
+  it('201 — valid scheduled_start_at in the future is accepted', async () => {
+    (mockService.createSession as jest.Mock).mockResolvedValueOnce(baseSession);
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-future',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+      scheduled_start_at: futureDate,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('409 — duplicate session_number within the same clinic', async () => {
+    const dupError = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+    (mockService.createSession as jest.Mock).mockRejectedValueOnce(dupError);
+
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-dup',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+      session_number: 'SN-001',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/session number/i);
   });
 });
 

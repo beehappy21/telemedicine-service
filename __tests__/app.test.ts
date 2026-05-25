@@ -9,12 +9,27 @@ const mockService = {
   linkEncounter: jest.fn(),
 } as unknown as SessionService;
 
-const app = createApp(mockService);
+const appConfig = { serviceToken: 'svc-token', emrApiToken: 'emr-token' };
+const app = createApp(mockService, appConfig);
 
 describe('GET /health', () => {
-  it('returns { status: ok, service: telemedicine }', async () => {
+  it('returns { status: ok, service: telemedicine } without auth', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok', service: 'telemedicine' });
+  });
+});
+
+describe('/api auth guard (via app)', () => {
+  it('401 — no token on /api route', async () => {
+    const res = await request(app).get('/api/sessions/x/join?userId=u');
+    expect(res.status).toBe(401);
+  });
+
+  it('403 — wrong token on /api route', async () => {
+    const res = await request(app)
+      .get('/api/sessions/x/join?userId=u')
+      .set('Authorization', 'Bearer bad-token');
+    expect(res.status).toBe(403);
   });
 });

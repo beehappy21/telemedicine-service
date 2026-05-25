@@ -15,6 +15,8 @@ export interface Session {
   emr_patient_id: string;
   emr_practitioner_id: string;
   emr_encounter_id: string | null;
+  session_number: string | null;
+  scheduled_start_at: Date | null;
   provider_room_name: string;
   provider_meeting_url: string;
   status: SessionStatus;
@@ -26,6 +28,8 @@ export interface CreateSessionInput {
   emr_clinic_id: string;
   emr_patient_id: string;
   emr_practitioner_id: string;
+  session_number?: string;
+  scheduled_start_at?: string;
 }
 
 export class SessionService {
@@ -39,8 +43,9 @@ export class SessionService {
 
     const result = await this.pool.query<Session>(
       `INSERT INTO telemedicine_sessions
-         (emr_clinic_id, emr_patient_id, emr_practitioner_id, provider_room_name, provider_meeting_url)
-       VALUES ($1, $2, $3, $4, $5)
+         (emr_clinic_id, emr_patient_id, emr_practitioner_id, provider_room_name, provider_meeting_url,
+          session_number, scheduled_start_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
         input.emr_clinic_id,
@@ -48,6 +53,8 @@ export class SessionService {
         input.emr_practitioner_id,
         room.name,
         room.url,
+        input.session_number ?? null,
+        input.scheduled_start_at ?? null,
       ]
     );
 

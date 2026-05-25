@@ -17,6 +17,8 @@ const baseSession = {
   emr_patient_id: 'patient-1',
   emr_practitioner_id: 'dr-1',
   emr_encounter_id: null,
+  session_number: null,
+  scheduled_start_at: null,
   provider_room_name: 'room-abc',
   provider_meeting_url: 'https://test.daily.co/room-abc',
   status: 'scheduled' as const,
@@ -43,6 +45,23 @@ describe('SessionService', () => {
 
       expect(mockCreateDailyRoom).toHaveBeenCalledWith('test-daily-key');
       expect(session).toEqual(baseSession);
+    });
+
+    it('passes session_number and scheduled_start_at to the query', async () => {
+      mockCreateDailyRoom.mockResolvedValueOnce({ name: 'room-x', url: 'https://daily.co/room-x' });
+      mockQuery.mockResolvedValueOnce({ rows: [{ ...baseSession, session_number: 'SN-001' }] });
+
+      await service.createSession({
+        emr_clinic_id: 'clinic-1',
+        emr_patient_id: 'patient-1',
+        emr_practitioner_id: 'dr-1',
+        session_number: 'SN-001',
+        scheduled_start_at: '2030-01-01T10:00:00Z',
+      });
+
+      const queryArgs = mockQuery.mock.calls[0][1] as unknown[];
+      expect(queryArgs[5]).toBe('SN-001');
+      expect(queryArgs[6]).toBe('2030-01-01T10:00:00Z');
     });
 
     it('propagates Daily.co errors', async () => {
