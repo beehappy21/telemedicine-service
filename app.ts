@@ -9,6 +9,7 @@ import { ipRateLimiter } from './middleware/rateLimit';
 export interface AppConfig {
   serviceToken: string;
   emrApiToken: string;
+  notifyWebhookUrl?: string;
 }
 
 export function createApp(
@@ -36,7 +37,7 @@ export function createApp(
   // All /api routes: global IP rate limit then auth
   app.use('/api', ipRateLimiter());
   app.use('/api', createAuthMiddleware({ serviceToken: appConfig.serviceToken, emrApiToken: appConfig.emrApiToken }));
-  app.use('/api', createTeleApi(sessionService, emrClient));
+  app.use('/api', createTeleApi(sessionService, emrClient, appConfig.notifyWebhookUrl));
 
   return app;
 }

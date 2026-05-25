@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { SessionService, SessionStatus, ListSessionsInput } from '../services/sessionService';
 import { EmrClient } from '../services/emrClient';
 import { createEncounterAfterCall } from '../services/createEncounterAfterCall';
+import { notifySession } from '../services/notifySession';
 import { clinicRateLimiter } from '../middleware/rateLimit';
 
 const VALID_STATUSES: SessionStatus[] = [
@@ -22,7 +23,7 @@ function isFuture(isoString: string): boolean {
   return new Date(isoString) > new Date();
 }
 
-export function createTeleApi(sessionService: SessionService, emrClient: EmrClient): Router {
+export function createTeleApi(sessionService: SessionService, emrClient: EmrClient, webhookUrl?: string): Router {
   const router = Router();
   const sessionCreateLimiter = clinicRateLimiter();
 
@@ -124,6 +125,11 @@ export function createTeleApi(sessionService: SessionService, emrClient: EmrClie
         chief_complaint,
       });
       res.status(201).json(session);
+
+      // Fire-and-forget: notify patient with join URL
+      void notifySession({ session, webhookUrl }).catch(err =>
+        console.error('[notifySession] Failed to send session URL:', err)
+      );
     } catch (err) {
       if (err instanceof Error && (err as NodeJS.ErrnoException & { code?: string }).code === '23505') {
         res.status(409).json({ error: 'Session number already exists for this clinic' });

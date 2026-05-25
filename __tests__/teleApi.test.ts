@@ -8,6 +8,12 @@ jest.mock('../services/createEncounterAfterCall');
 import { createEncounterAfterCall } from '../services/createEncounterAfterCall';
 const mockCreateEncounterAfterCall = createEncounterAfterCall as jest.Mock;
 
+jest.mock('../services/notifySession', () => ({
+  notifySession: jest.fn().mockResolvedValue(undefined),
+}));
+import { notifySession } from '../services/notifySession';
+const mockNotifySession = notifySession as jest.Mock;
+
 const mockService = {
   createSession: jest.fn(),
   getJoinToken: jest.fn(),
@@ -121,6 +127,34 @@ describe('POST /api/sessions', () => {
     });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/session number/i);
+  });
+
+  it('201 — calls notifySession fire-and-forget after session creation', async () => {
+    (mockService.createSession as jest.Mock).mockResolvedValueOnce(baseSession);
+    mockNotifySession.mockResolvedValueOnce(undefined);
+
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-1',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockNotifySession).toHaveBeenCalledWith({ session: baseSession, webhookUrl: undefined });
+  });
+
+  it('201 — notification failure does not affect session creation response', async () => {
+    (mockService.createSession as jest.Mock).mockResolvedValueOnce(baseSession);
+    mockNotifySession.mockRejectedValueOnce(new Error('webhook down'));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await request(app).post('/api/sessions').send({
+      emr_clinic_id: 'clinic-1',
+      emr_patient_id: 'patient-1',
+      emr_practitioner_id: 'dr-1',
+    });
+
+    expect(res.status).toBe(201);
   });
 });
 

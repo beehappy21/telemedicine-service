@@ -2,6 +2,7 @@ import { config } from '../config';
 import { createPool } from '../database/db';
 import { SessionService } from '../services/sessionService';
 import { EmrClient } from '../services/emrClient';
+import { startSessionReminder } from '../services/sessionReminder';
 import { createApp } from '../app';
 
 async function main() {
@@ -9,9 +10,12 @@ async function main() {
   const sessionService = new SessionService(pool, config.dailyApiKey);
   const emrClient = new EmrClient(config.emrCoreBaseUrl, config.emrCoreApiToken);
 
+  startSessionReminder(pool, config.notifyWebhookUrl);
+
   const app = createApp(sessionService, {
-    serviceToken: config.serviceToken,
-    emrApiToken:  config.emrApiToken,
+    serviceToken:     config.serviceToken,
+    emrApiToken:      config.emrApiToken,
+    notifyWebhookUrl: config.notifyWebhookUrl,
   }, emrClient);
 
   const server = app.listen(config.port, () => {

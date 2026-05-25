@@ -9,11 +9,12 @@ function requireEnv(name: string): string {
 }
 
 export const config = {
-  dailyApiKey:     requireEnv('DAILY_API_KEY'),
-  databaseUrl:     requireEnv('DATABASE_URL'),
-  serviceToken:    requireEnv('SERVICE_TOKEN'),
-  emrApiToken:     requireEnv('EMR_API_TOKEN'),
-  emrCoreBaseUrl:  process.env['EMR_CORE_BASE_URL']  ?? 'http://localhost:3000',
-  emrCoreApiToken: process.env['EMR_CORE_API_TOKEN'] ?? '',
-  port:            parseInt(process.env['PORT'] ?? '3001', 10),
+  dailyApiKey:       requireEnv('DAILY_API_KEY'),
+  databaseUrl:       requireEnv('DATABASE_URL'),
+  serviceToken:      requireEnv('SERVICE_TOKEN'),
+  emrApiToken:       requireEnv('EMR_API_TOKEN'),
+  emrCoreBaseUrl:    process.env['EMR_CORE_BASE_URL']      ?? 'http://localhost:3000',
+  emrCoreApiToken:   process.env['EMR_CORE_API_TOKEN']     ?? '',
+  notifyWebhookUrl:  process.env['NOTIFY_WEBHOOK_URL'],
+  port:              parseInt(process.env['PORT'] ?? '3001', 10),
 };
