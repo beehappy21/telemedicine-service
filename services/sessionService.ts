@@ -136,7 +136,8 @@ export class SessionService {
 
   async getJoinToken(
     sessionId: string,
-    userId: string
+    userId: string,
+    isHost = false
   ): Promise<{ session: Session; token: string }> {
     const result = await this.pool.query<Session>(
       'SELECT * FROM telemedicine_sessions WHERE id = $1',
@@ -148,7 +149,7 @@ export class SessionService {
     }
 
     const session = result.rows[0];
-    const token = await createMeetingToken(this.dailyApiKey, session.provider_room_name, userId);
+    const token = await createMeetingToken(this.dailyApiKey, session.provider_room_name, userId, isHost);
 
     return { session, token };
   }

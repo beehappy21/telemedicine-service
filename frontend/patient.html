@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เข้าร่วมการพบแพทย์</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 32px; width: 100%; max-width: 480px; }
+    h1 { font-size: 1.4rem; color: #1e293b; margin-bottom: 20px; }
+    .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; }
+    .info-row:last-child { border-bottom: none; }
+    .label { color: #64748b; }
+    .value { font-weight: 600; color: #1e293b; }
+    .status-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .status-scheduled { background: #dbeafe; color: #1d4ed8; }
+    .status-waiting   { background: #fef9c3; color: #854d0e; }
+    .status-in_progress { background: #dcfce7; color: #15803d; }
+    .status-completed { background: #f1f5f9; color: #475569; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 20px; transition: opacity .15s; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .call-frame { display: none; width: 100%; height: 520px; border: none; border-radius: 10px; margin-top: 20px; }
+    .error { background: #fee2e2; color: #b91c1c; padding: 12px 16px; border-radius: 8px; font-size: .9rem; margin-top: 16px; }
+    #loading { text-align: center; color: #64748b; padding: 40px; }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div id="loading">กำลังโหลดข้อมูล...</div>
+
+    <div id="session-info" style="display:none">
+      <h1>การพบแพทย์ทางออนไลน์</h1>
+      <div class="info-row">
+        <span class="label">รหัสแพทย์</span>
+        <span class="value" id="practitioner-id">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">เวลานัด</span>
+        <span class="value" id="scheduled-time">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">สถานะ</span>
+        <span id="status-badge" class="status-badge">—</span>
+      </div>
+      <button id="btn-join" class="btn btn-primary">เข้าห้องตรวจ</button>
+    </div>
+
+    <div id="error-box" style="display:none" class="error"></div>
+  </div>
+
+  <iframe id="call-frame" class="call-frame"
+    allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
+
+  <script>
+    const params      = new URLSearchParams(location.search);
+    const sessionId   = params.get('sessionId');
+    const bearerToken = params.get('token');
+
+    const headers = {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+
+    const STATUS_LABELS = {
+      scheduled:   'รอการนัด',
+      waiting:     'รอแพทย์',
+      in_progress: 'กำลังพบแพทย์',
+      completed:   'เสร็จสิ้น',
+      cancelled:   'ยกเลิก',
+      no_show:     'ไม่มาพบ',
+    };
+
+    async function init() {
+      if (!sessionId || !bearerToken) {
+        showError('ลิงก์ไม่ถูกต้อง กรุณาติดต่อเจ้าหน้าที่');
+        return;
+      }
+      try {
+        const session = await apiFetch(`/api/sessions/${sessionId}`);
+        renderSession(session);
+        document.getElementById('btn-join').onclick = () => joinCall(session);
+      } catch (e) {
+        showError('ไม่สามารถโหลดข้อมูลการนัดได้: ' + e.message);
+      }
+    }
+
+    function renderSession(session) {
+      document.getElementById('practitioner-id').textContent = session.emr_practitioner_id;
+      document.getElementById('scheduled-time').textContent = session.scheduled_start_at
+        ? new Date(session.scheduled_start_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+        : 'ไม่ระบุเวลา';
+
+      const badge = document.getElementById('status-badge');
+      badge.textContent = STATUS_LABELS[session.status] ?? session.status;
+      badge.className   = `status-badge status-${session.status}`;
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('session-info').style.display = 'block';
+    }
+
+    async function joinCall(session) {
+      const btn = document.getElementById('btn-join');
+      btn.disabled = true;
+      btn.textContent = 'กำลังเชื่อมต่อ...';
+      try {
+        await apiFetch(`/api/sessions/${sessionId}/status`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ status: 'waiting' }),
+        });
+        const { token } = await apiFetch(
+          `/api/sessions/${sessionId}/join?userId=${session.emr_patient_id}&role=patient`
+        );
+        const frame = document.getElementById('call-frame');
+        frame.src          = `${session.provider_meeting_url}?t=${token}`;
+        frame.style.display = 'block';
+        btn.style.display   = 'none';
+      } catch (e) {
+        showError('ไม่สามารถเข้าร่วมการพบแพทย์ได้: ' + e.message);
+        btn.disabled    = false;
+        btn.textContent = 'เข้าห้องตรวจ';
+      }
+    }
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...headers, ...(options.headers ?? {}) } });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? res.statusText);
+      }
+      return res.json();
+    }
+
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      const box = document.getElementById('error-box');
+      box.textContent    = msg;
+      box.style.display  = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>

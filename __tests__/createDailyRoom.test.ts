@@ -59,4 +59,29 @@ describe('createMeetingToken', () => {
       'Failed to create meeting token'
     );
   });
+
+  it('includes is_owner=true in body when isOwner=true', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ token: 'host-token-xyz' }),
+    });
+
+    const token = await createMeetingToken('key', 'room', 'dr-1', true);
+
+    expect(token).toBe('host-token-xyz');
+    const callBody = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(callBody.properties.is_owner).toBe(true);
+  });
+
+  it('does not include is_owner when isOwner=false (default)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ token: 'patient-token' }),
+    });
+
+    await createMeetingToken('key', 'room', 'patient-1');
+
+    const callBody = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(callBody.properties.is_owner).toBeUndefined();
+  });
 });

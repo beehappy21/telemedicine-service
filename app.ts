@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import path from 'path';
 import { SessionService } from './services/sessionService';
 import { EmrClient } from './services/emrClient';
 import { createTeleApi } from './api/teleApi';
@@ -21,6 +22,15 @@ export function createApp(
   // /health is public — no auth, no rate limit
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', service: 'telemedicine' });
+  });
+
+  // Frontend pages — public, no auth
+  const frontendDir = path.join(process.cwd(), 'frontend');
+  app.get('/app/patient', (_req: Request, res: Response) => {
+    res.sendFile(path.join(frontendDir, 'patient.html'));
+  });
+  app.get('/app/doctor', (_req: Request, res: Response) => {
+    res.sendFile(path.join(frontendDir, 'doctor.html'));
   });
 
   // All /api routes: global IP rate limit then auth

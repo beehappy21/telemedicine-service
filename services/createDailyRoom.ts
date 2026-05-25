@@ -30,7 +30,8 @@ export async function createDailyRoom(apiKey: string): Promise<DailyRoom> {
 export async function createMeetingToken(
   apiKey: string,
   roomName: string,
-  userId: string
+  userId: string,
+  isOwner = false
 ): Promise<string> {
   const response = await fetch('https://api.daily.co/v1/meeting-tokens', {
     method: 'POST',
@@ -42,6 +43,7 @@ export async function createMeetingToken(
       properties: {
         room_name: roomName,
         user_id: userId,
+        ...(isOwner ? { is_owner: true } : {}),
         exp: Math.floor(Date.now() / 1000) + 3600,
       },
     }),

@@ -50,14 +50,17 @@ export function createTeleApi(sessionService: SessionService, emrClient: EmrClie
   router.get('/sessions/:id/join', async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.query['userId'] as string | undefined;
+    const role   = (req.query['role'] as string | undefined) ?? 'patient';
 
     if (!userId) {
       res.status(400).json({ error: 'Missing required query parameter: userId' });
       return;
     }
 
+    const isHost = role === 'doctor';
+
     try {
-      const result = await sessionService.getJoinToken(id, userId);
+      const result = await sessionService.getJoinToken(id, userId, isHost);
       res.json(result);
     } catch (err) {
       if (err instanceof Error && err.message.includes('not found')) {

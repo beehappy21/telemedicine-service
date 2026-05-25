@@ -37,3 +37,17 @@ describe('/api auth guard (via app)', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('Frontend pages', () => {
+  it('GET /app/patient — serves patient.html without auth', async () => {
+    const res = await request(app).get('/app/patient');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+
+  it('GET /app/doctor — serves doctor.html without auth', async () => {
+    const res = await request(app).get('/app/doctor');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+});

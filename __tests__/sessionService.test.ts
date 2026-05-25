@@ -77,15 +77,25 @@ describe('SessionService', () => {
   });
 
   describe('getJoinToken', () => {
-    it('returns session and meeting token', async () => {
+    it('returns session and patient token (isHost=false by default)', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [baseSession] });
-      mockCreateMeetingToken.mockResolvedValueOnce('join-token-xyz');
+      mockCreateMeetingToken.mockResolvedValueOnce('patient-token-xyz');
 
-      const result = await service.getJoinToken('sess-1', 'user-1');
+      const result = await service.getJoinToken('sess-1', 'patient-1');
 
       expect(result.session).toEqual(baseSession);
-      expect(result.token).toBe('join-token-xyz');
-      expect(mockCreateMeetingToken).toHaveBeenCalledWith('test-daily-key', 'room-abc', 'user-1');
+      expect(result.token).toBe('patient-token-xyz');
+      expect(mockCreateMeetingToken).toHaveBeenCalledWith('test-daily-key', 'room-abc', 'patient-1', false);
+    });
+
+    it('requests host token when isHost=true (doctor role)', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [baseSession] });
+      mockCreateMeetingToken.mockResolvedValueOnce('host-token-xyz');
+
+      const result = await service.getJoinToken('sess-1', 'dr-1', true);
+
+      expect(result.token).toBe('host-token-xyz');
+      expect(mockCreateMeetingToken).toHaveBeenCalledWith('test-daily-key', 'room-abc', 'dr-1', true);
     });
 
     it('throws when session not found', async () => {

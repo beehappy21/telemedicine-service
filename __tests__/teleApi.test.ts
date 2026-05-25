@@ -152,6 +152,31 @@ describe('GET /api/sessions/:id/join', () => {
     const res = await request(app).get('/api/sessions/bad-id/join?userId=user-1');
     expect(res.status).toBe(404);
   });
+
+  it('200 — role=doctor passes isHost=true to getJoinToken', async () => {
+    (mockService.getJoinToken as jest.Mock).mockResolvedValueOnce({
+      session: baseSession,
+      token: 'host-token-xyz',
+    });
+
+    const res = await request(app).get('/api/sessions/sess-1/join?userId=dr-1&role=doctor');
+
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBe('host-token-xyz');
+    expect(mockService.getJoinToken).toHaveBeenCalledWith('sess-1', 'dr-1', true);
+  });
+
+  it('200 — role=patient passes isHost=false to getJoinToken', async () => {
+    (mockService.getJoinToken as jest.Mock).mockResolvedValueOnce({
+      session: baseSession,
+      token: 'patient-token-xyz',
+    });
+
+    const res = await request(app).get('/api/sessions/sess-1/join?userId=patient-1&role=patient');
+
+    expect(res.status).toBe(200);
+    expect(mockService.getJoinToken).toHaveBeenCalledWith('sess-1', 'patient-1', false);
+  });
 });
 
 describe('PATCH /api/sessions/:id/status', () => {
