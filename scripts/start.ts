@@ -1,25 +1,27 @@
-import express from 'express';
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-import { createTeleApi } from '../api/teleApi';
+import { config } from '../config';
+import { createPool } from '../database/db';
 import { SessionService } from '../services/sessionService';
+import { createApp } from '../app';
 
-dotenv.config();
+async function main() {
+  const pool = await createPool({ connectionString: config.databaseUrl });
+  const sessionService = new SessionService(pool, config.dailyApiKey);
+  const app = createApp(sessionService);
 
-const port = process.env['PORT'] ?? '3001';
-const databaseUrl = process.env['DATABASE_URL'];
-const dailyApiKey = process.env['DAILY_API_KEY'];
+  const server = app.listen(config.port, () => {
+    console.log(`Telemedicine service running on port ${config.port}`);
+  });
 
-if (!databaseUrl) throw new Error('DATABASE_URL is required');
-if (!dailyApiKey) throw new Error('DAILY_API_KEY is required');
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(async () => {
+      await pool.end();
+      process.exit(0);
+    });
+  });
+}
 
-const pool = new Pool({ connectionString: databaseUrl });
-const sessionService = new SessionService(pool, dailyApiKey);
-
-const app = express();
-app.use(express.json());
-app.use('/api', createTeleApi(sessionService));
-
-app.listen(Number(port), () => {
-  console.log(`Telemedicine service running on port ${port}`);
+main().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

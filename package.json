@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/scripts/start.js",
     "dev": "ts-node scripts/start.ts",
-    "test": "jest --forceExit"
+    "test": "jest --forceExit",
+    "db:migrate": "ts-node scripts/migrate.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
