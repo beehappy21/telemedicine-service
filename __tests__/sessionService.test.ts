@@ -257,4 +257,54 @@ describe('SessionService', () => {
       expect(result.limit).toBe(100);
     });
   });
+
+  describe('checkDb', () => {
+    it('returns true when SELECT 1 succeeds', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+
+      const result = await service.checkDb();
+      expect(result).toBe(true);
+      expect(mockQuery).toHaveBeenCalledWith('SELECT 1');
+    });
+
+    it('returns false when query throws', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('connection refused'));
+
+      const result = await service.checkDb();
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getMetrics', () => {
+    it('returns session counts by status as numbers', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { status: 'scheduled', count: '3' },
+          { status: 'in_progress', count: '1' },
+          { status: 'completed', count: '7' },
+        ],
+      });
+
+      const metrics = await service.getMetrics();
+      expect(metrics.scheduled).toBe(3);
+      expect(metrics.in_progress).toBe(1);
+      expect(metrics.completed).toBe(7);
+    });
+
+    it('returns empty object when no sessions today', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const metrics = await service.getMetrics();
+      expect(metrics).toEqual({});
+    });
+
+    it('queries only sessions created today', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      await service.getMetrics();
+
+      const sql = mockQuery.mock.calls[0][0] as string;
+      expect(sql).toContain('CURRENT_DATE');
+    });
+  });
 });

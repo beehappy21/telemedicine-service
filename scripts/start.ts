@@ -16,6 +16,7 @@ async function main() {
     serviceToken:     config.serviceToken,
     emrApiToken:      config.emrApiToken,
     notifyWebhookUrl: config.notifyWebhookUrl,
+    dailyApiKey:      config.dailyApiKey,
   }, emrClient);
 
   const server = app.listen(config.port, () => {

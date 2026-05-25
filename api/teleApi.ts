@@ -27,6 +27,19 @@ export function createTeleApi(sessionService: SessionService, emrClient: EmrClie
   const router = Router();
   const sessionCreateLimiter = clinicRateLimiter();
 
+  // GET /metrics — session counts by status for today
+  router.get('/metrics', async (_req: Request, res: Response) => {
+    try {
+      const sessionsByStatus = await sessionService.getMetrics();
+      res.json({
+        sessions_today: sessionsByStatus,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /sessions — list with optional filters + pagination
   router.get('/sessions', async (req: Request, res: Response) => {
     const { emrClinicId, status, date, page, limit } = req.query as Record<string, string | undefined>;

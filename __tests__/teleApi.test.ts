@@ -21,6 +21,7 @@ const mockService = {
   linkEncounter: jest.fn(),
   getSession: jest.fn(),
   listSessions: jest.fn(),
+  getMetrics: jest.fn(),
 } as unknown as SessionService;
 
 const mockEmrClient = {} as unknown as EmrClient;
@@ -372,5 +373,39 @@ describe('PATCH /api/sessions/:id/encounter', () => {
       .patch('/api/sessions/bad-id/encounter')
       .send({ emr_encounter_id: 'enc-1' });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/metrics', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('200 — returns session counts by status for today', async () => {
+    (mockService.getMetrics as jest.Mock).mockResolvedValueOnce({
+      scheduled: 5,
+      in_progress: 1,
+      completed: 10,
+    });
+
+    const res = await request(app).get('/api/metrics');
+    expect(res.status).toBe(200);
+    expect(res.body.sessions_today.scheduled).toBe(5);
+    expect(res.body.sessions_today.in_progress).toBe(1);
+    expect(res.body.sessions_today.completed).toBe(10);
+    expect(res.body.timestamp).toBeDefined();
+  });
+
+  it('200 — returns empty object when no sessions today', async () => {
+    (mockService.getMetrics as jest.Mock).mockResolvedValueOnce({});
+
+    const res = await request(app).get('/api/metrics');
+    expect(res.status).toBe(200);
+    expect(res.body.sessions_today).toEqual({});
+  });
+
+  it('500 — propagates service errors', async () => {
+    (mockService.getMetrics as jest.Mock).mockRejectedValueOnce(new Error('DB error'));
+
+    const res = await request(app).get('/api/metrics');
+    expect(res.status).toBe(500);
   });
 });

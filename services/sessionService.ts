@@ -177,6 +177,28 @@ export class SessionService {
     return result.rows[0];
   }
 
+  async checkDb(): Promise<boolean> {
+    try {
+      await this.pool.query('SELECT 1');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async getMetrics(): Promise<Record<string, number>> {
+    const result = await this.pool.query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*) AS count
+       FROM telemedicine_sessions
+       WHERE created_at >= CURRENT_DATE
+       GROUP BY status`
+    );
+    return result.rows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+  }
+
   async linkEncounter(sessionId: string, emrEncounterId: string): Promise<Session> {
     const result = await this.pool.query<Session>(
       `UPDATE telemedicine_sessions
